@@ -1,6 +1,8 @@
 "use client";
 
-const documents = [
+import { useRef, useState, type ChangeEvent } from "react";
+
+const initialDocuments = [
   {
     id: "doc-1",
     name: "ExpertGen Study Notes.pdf",
@@ -22,9 +24,31 @@ const documents = [
 ];
 
 export default function DocumentsPageClient() {
+  const [documents, setDocuments] = useState(initialDocuments);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const handleUpload = () => {
-    // TODO: open file picker and upload documents.
-    console.info("Upload clicked");
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const newDocuments = files.map((file) => ({
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `doc-${Date.now()}-${file.name}`,
+      name: file.name,
+      status: "Uploaded",
+      updated: "Just now",
+    }));
+
+    setDocuments((prevDocuments) => [...newDocuments, ...prevDocuments]);
+    event.target.value = "";
   };
 
   const handleManage = () => {
@@ -59,6 +83,13 @@ export default function DocumentsPageClient() {
             >
               Upload Files
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
         </section>
 
