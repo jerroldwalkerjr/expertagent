@@ -1,64 +1,221 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 
 type DocumentEntry = {
-  id: string;
+  id: number;
   name: string;
   status: string;
   updated: string;
-  folderId: string;
-  content?: string;
-  mimeType?: string;
-  dataUrl?: string;
+  folderId: number;
+  mimeType?: string | null;
+  dataUrl?: string | null;
 };
 
 type Folder = {
-  id: string;
+  id: number;
   name: string;
 };
 
-const initialDocuments: DocumentEntry[] = [
-  {
-    id: "doc-1",
-    name: "ExpertGen Study Notes.pdf",
-    status: "Indexed",
-    updated: "2 hours ago",
-    folderId: "folder-general",
-  },
-  {
-    id: "doc-2",
-    name: "Learning Outcomes Survey.csv",
-    status: "Processing",
-    updated: "Yesterday",
-    folderId: "folder-general",
-  },
-  {
-    id: "doc-3",
-    name: "Trust Evaluation Summary.docx",
-    status: "Indexed",
-    updated: "3 days ago",
-    folderId: "folder-general",
-  },
-];
+type ApiFolder = {
+  id: number;
+  name: string;
+};
+
+type ApiDocument = {
+  id: number;
+  name: string;
+  status: string;
+  updated: string;
+  folder_id: number;
+  data_url?: string | null;
+  mime_type?: string | null;
+};
 
 export default function DocumentsPageClient() {
-  const defaultFolderId = "folder-general";
-  const [documents, setDocuments] = useState(initialDocuments);
+  const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [folders, setFolders] = useState<Folder[]>([
-    { id: defaultFolderId, name: "General" },
+    { id: 0, name: "General" },
   ]);
-  const [selectedFolderId, setSelectedFolderId] =
-    useState(defaultFolderId);
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(
+    null
+  );
   const [newFolderName, setNewFolderName] = useState("");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
   const [editingFolderName, setEditingFolderName] = useState("");
-  const [openFolderIds, setOpenFolderIds] = useState<string[]>([
-    defaultFolderId,
-  ]);
+  const [openFolderIds, setOpenFolderIds] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const toDocumentEntry = (doc: ApiDocument): DocumentEntry => ({
+    id: doc.id,
+    name: doc.name,
+    status: doc.status,
+    updated: doc.updated,
+    folderId: doc.folder_id,
+    dataUrl: doc.data_url ?? null,
+    mimeType: doc.mime_type ?? null,
+  });
+
+  const toFolderEntry = (folder: ApiFolder): Folder => ({
+    id: folder.id,
+    name: folder.name,
+  });
+
+  const getDefaultFolderId = (list: Folder[]): number | null => {
+    const defaultFolder =
+      list.find((folder) => folder.name === "General") ?? list[0];
+    return defaultFolder ? defaultFolder.id : null;
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDocuments = async () => {
+      try {
+        const [foldersResponse, documentsResponse] = await Promise.all([
+          fetch("/api/document-folders"),
+          fetch("/api/documents"),
+        ]);
+
+        if (!foldersResponse.ok || !documentsResponse.ok) {
+          return;
+        }
+
+        const folderData = (await foldersResponse.json()) as ApiFolder[];
+        const documentData = (await documentsResponse.json()) as ApiDocument[];
+
+        if (!isMounted) {
+          return;
+        }
+
+        const mappedFolders = folderData.map(toFolderEntry);
+        setFolders(mappedFolders);
+        setDocuments(documentData.map(toDocumentEntry));
+
+        const defaultId = getDefaultFolderId(mappedFolders);
+        if (defaultId !== null) {
+          setSelectedFolderId(defaultId);
+          setOpenFolderIds((prevOpenIds) =>
+            prevOpenIds.length === 0 ? [defaultId] : prevOpenIds
+          );
+        }
+      } catch {
+        // Ignore load errors and keep local state.
+      }
+    };
+
+    loadDocuments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const createFolder = async (name: string) => {
+    const response = await fetch("/api/document-folders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to create folder.");
+    }
+
+    const data = (await response.json()) as ApiFolder;
+    return toFolderEntry(data);
+  };
+
+  const renameFolder = async (folderId: number, name: string) => {
+    const response = await fetch(`/api/document-folders/${folderId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to rename folder.");
+    }
+
+    const data = (await response.json()) as ApiFolder;
+    return toFolderEntry(data);
+  };
+
+  const removeFolder = async (folderId: number) => {
+    const response = await fetch(`/api/document-folders/${folderId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to delete folder.");
+    }
+  };
+
+  const createDocument = async (payload: {
+    name: string;
+    status: string;
+    updated: string;
+    folder_id: number;
+    data_url?: string | null;
+    mime_type?: string | null;
+  }) => {
+    const response = await fetch("/api/documents", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to save document.");
+    }
+
+    const data = (await response.json()) as ApiDocument;
+    return toDocumentEntry(data);
+  };
+
+  const updateDocument = async (
+    documentId: number,
+    payload: { folder_id?: number }
+  ) => {
+    const response = await fetch(`/api/documents/${documentId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to update document.");
+    }
+
+    const data = (await response.json()) as ApiDocument;
+    return toDocumentEntry(data);
+  };
+
+  const removeDocument = async (documentId: number) => {
+    const response = await fetch(`/api/documents/${documentId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to delete document.");
+    }
+  };
 
   const handleUpload = () => {
     fileInputRef.current?.click();
@@ -69,56 +226,51 @@ export default function DocumentsPageClient() {
       return;
     }
 
-    const newDocuments: DocumentEntry[] = [];
+    const targetFolderId = selectedFolderId ?? getDefaultFolderId(folders);
+    if (targetFolderId === null) {
+      return;
+    }
 
     files.forEach((file, index) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result;
-        const targetFolderId = selectedFolderId || defaultFolderId;
-        newDocuments.push({
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `doc-${Date.now()}-${file.name}-${index}`,
+        const payload = {
           name: file.name,
           status: "Uploaded",
           updated: "Just now",
-          folderId: targetFolderId,
-          content:
-            typeof result === "string"
-              ? "File ready for download."
-              : "File ready for download.",
-          mimeType: file.type || "application/octet-stream",
-          dataUrl: typeof result === "string" ? result : undefined,
-        });
-        if (newDocuments.length === files.length) {
-          setDocuments((prevDocuments) => [
-            ...newDocuments,
-            ...prevDocuments,
-          ]);
-        }
+          folder_id: targetFolderId,
+          data_url: typeof result === "string" ? result : null,
+          mime_type: file.type || "application/octet-stream",
+        };
+
+        void (async () => {
+          try {
+            const savedDoc = await createDocument(payload);
+            setDocuments((prevDocuments) => [savedDoc, ...prevDocuments]);
+          } catch {
+            // Ignore save errors for now.
+          }
+        })();
       };
       reader.onerror = () => {
-        newDocuments.push({
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `doc-${Date.now()}-${file.name}-${index}`,
+        const payload = {
           name: file.name,
           status: "Uploaded",
           updated: "Just now",
-          folderId: selectedFolderId || defaultFolderId,
-          content: "Unable to read file contents.",
-          mimeType: file.type || "application/octet-stream",
-          dataUrl: undefined,
-        });
-        if (newDocuments.length === files.length) {
-          setDocuments((prevDocuments) => [
-            ...newDocuments,
-            ...prevDocuments,
-          ]);
-        }
+          folder_id: targetFolderId,
+          data_url: null,
+          mime_type: file.type || "application/octet-stream",
+        };
+
+        void (async () => {
+          try {
+            const savedDoc = await createDocument(payload);
+            setDocuments((prevDocuments) => [savedDoc, ...prevDocuments]);
+          } catch {
+            // Ignore save errors for now.
+          }
+        })();
       };
       reader.readAsDataURL(file);
     });
@@ -160,10 +312,18 @@ export default function DocumentsPageClient() {
     link.remove();
   };
 
-  const handleDeleteDocument = (id: string) => {
-    setDocuments((prevDocuments) =>
-      prevDocuments.filter((doc) => doc.id !== id)
-    );
+  const handleDeleteDocument = (id: number) => {
+    const documentId = id;
+    void (async () => {
+      try {
+        await removeDocument(documentId);
+        setDocuments((prevDocuments) =>
+          prevDocuments.filter((doc) => doc.id !== documentId)
+        );
+      } catch {
+        // Ignore delete errors for now.
+      }
+    })();
   };
 
   const handleCreateFolder = () => {
@@ -171,70 +331,95 @@ export default function DocumentsPageClient() {
     if (!name) {
       return;
     }
-    const exists = folders.some(
-      (folder) => folder.name.toLowerCase() === name.toLowerCase()
-    );
-    if (exists) {
-      return;
-    }
-    const id =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `folder-${Date.now()}`;
-    setFolders((prevFolders) => [...prevFolders, { id, name }]);
-    setSelectedFolderId(id);
-    setOpenFolderIds((prevOpenIds) => [...prevOpenIds, id]);
-    setNewFolderName("");
-    setIsCreatingFolder(false);
+    void (async () => {
+      try {
+        const createdFolder = await createFolder(name);
+        setFolders((prevFolders) => [...prevFolders, createdFolder]);
+        setSelectedFolderId(createdFolder.id);
+        setOpenFolderIds((prevOpenIds) => [
+          ...prevOpenIds,
+          createdFolder.id,
+        ]);
+        setNewFolderName("");
+        setIsCreatingFolder(false);
+      } catch {
+        // Ignore create errors for now.
+      }
+    })();
   };
 
-  const handleStartRenameFolder = (folderId: string, name: string) => {
+  const handleStartRenameFolder = (folderId: number, name: string) => {
     setEditingFolderId(folderId);
     setEditingFolderName(name);
   };
 
   const handleSaveRenameFolder = () => {
     const name = editingFolderName.trim();
-    if (!editingFolderId || !name) {
+    if (editingFolderId === null || !name) {
       return;
     }
-    setFolders((prevFolders) =>
-      prevFolders.map((folder) =>
-        folder.id === editingFolderId ? { ...folder, name } : folder
-      )
-    );
-    setEditingFolderId(null);
-    setEditingFolderName("");
+    void (async () => {
+      try {
+        const updatedFolder = await renameFolder(editingFolderId, name);
+        setFolders((prevFolders) =>
+          prevFolders.map((folder) =>
+            folder.id === updatedFolder.id ? updatedFolder : folder
+          )
+        );
+        setEditingFolderId(null);
+        setEditingFolderName("");
+      } catch {
+        // Ignore rename errors for now.
+      }
+    })();
   };
 
-  const handleDeleteFolder = (folderId: string) => {
-    if (folderId === defaultFolderId) {
+  const handleDeleteFolder = (folderId: number) => {
+    const defaultId = getDefaultFolderId(folders);
+    if (defaultId !== null && folderId === defaultId) {
       return;
     }
-    setFolders((prevFolders) =>
-      prevFolders.filter((folder) => folder.id !== folderId)
-    );
-    setDocuments((prevDocuments) =>
-      prevDocuments.map((doc) =>
-        doc.folderId === folderId
-          ? { ...doc, folderId: defaultFolderId }
-          : doc
-      )
-    );
-    if (selectedFolderId === folderId) {
-      setSelectedFolderId(defaultFolderId);
-    }
-    setOpenFolderIds((prevOpenIds) =>
-      prevOpenIds.filter((id) => id !== folderId)
-    );
+
+    void (async () => {
+      try {
+        await removeFolder(folderId);
+        setFolders((prevFolders) =>
+          prevFolders.filter((folder) => folder.id !== folderId)
+        );
+        setDocuments((prevDocuments) =>
+          prevDocuments.map((doc) =>
+            doc.folderId === folderId && defaultId !== null
+              ? { ...doc, folderId: defaultId }
+              : doc
+          )
+        );
+        if (selectedFolderId === folderId) {
+          setSelectedFolderId(defaultId);
+        }
+        setOpenFolderIds((prevOpenIds) =>
+          prevOpenIds.filter((id) => id !== folderId)
+        );
+      } catch {
+        // Ignore delete errors for now.
+      }
+    })();
   };
 
-  const handleMoveDocument = (docId: string, folderId: string) => {
-    setDocuments((prevDocuments) =>
-      prevDocuments.map((doc) =>
-        doc.id === docId ? { ...doc, folderId } : doc
-      )
-    );
+  const handleMoveDocument = (docId: number, folderId: number) => {
+    void (async () => {
+      try {
+        const updatedDoc = await updateDocument(docId, {
+          folder_id: folderId,
+        });
+        setDocuments((prevDocuments) =>
+          prevDocuments.map((doc) =>
+            doc.id === updatedDoc.id ? updatedDoc : doc
+          )
+        );
+      } catch {
+        // Ignore move errors for now.
+      }
+    })();
   };
 
   const handleToggleFolder = (folderId: string) => {
@@ -254,6 +439,7 @@ export default function DocumentsPageClient() {
     folder,
     documents: documents.filter((doc) => doc.folderId === folder.id),
   }));
+  const defaultFolderId = getDefaultFolderId(folders);
 
   return (
     <div className="space-y-6">
@@ -287,8 +473,10 @@ export default function DocumentsPageClient() {
             <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
               <span>Upload to</span>
               <select
-                value={selectedFolderId}
-                onChange={(event) => setSelectedFolderId(event.target.value)}
+                value={selectedFolderId ?? ""}
+                onChange={(event) =>
+                  setSelectedFolderId(Number(event.target.value))
+                }
                 className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 focus:border-indigo-500 focus:outline-none"
               >
                 {folders.map((folder) => (
@@ -510,7 +698,7 @@ export default function DocumentsPageClient() {
                                   onChange={(event) =>
                                     handleMoveDocument(
                                       doc.id,
-                                      event.target.value
+                                      Number(event.target.value)
                                     )
                                   }
                                   className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 focus:border-indigo-500 focus:outline-none"
