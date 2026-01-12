@@ -46,6 +46,7 @@ export default function DocumentsPageClient() {
   const [selectedFolderId, setSelectedFolderId] =
     useState(defaultFolderId);
   const [newFolderName, setNewFolderName] = useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingFolderName, setEditingFolderName] = useState("");
   const [openFolderIds, setOpenFolderIds] = useState<string[]>([
@@ -179,6 +180,7 @@ export default function DocumentsPageClient() {
     setSelectedFolderId(id);
     setOpenFolderIds((prevOpenIds) => [...prevOpenIds, id]);
     setNewFolderName("");
+    setIsCreatingFolder(false);
   };
 
   const handleStartRenameFolder = (folderId: string, name: string) => {
@@ -342,25 +344,48 @@ export default function DocumentsPageClient() {
         </h3>
         <div className="mt-4 space-y-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Folders
-            </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                type="text"
-                value={newFolderName}
-                onChange={(event) => setNewFolderName(event.target.value)}
-                placeholder="New folder name"
-                className="w-full rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
-              />
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Folders
+              </p>
               <button
                 type="button"
-                onClick={handleCreateFolder}
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800"
+                onClick={() => setIsCreatingFolder(true)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
               >
                 Create Folder
               </button>
             </div>
+            {isCreatingFolder && (
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  placeholder="New folder name"
+                  className="w-full rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateFolder}
+                    className="rounded-full bg-slate-900 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-slate-800"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingFolder(false);
+                      setNewFolderName("");
+                    }}
+                    className="rounded-full border border-slate-200 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="mt-3 space-y-2">
               {documentsByFolder.map(({ folder, documents: folderDocuments }) => {
                 const isOpen = openFolderIds.includes(folder.id);
