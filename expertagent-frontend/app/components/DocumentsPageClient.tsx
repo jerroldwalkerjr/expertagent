@@ -13,6 +13,11 @@ type DocumentEntry = {
   dataUrl?: string;
 };
 
+type Folder = {
+  id: string;
+  name: string;
+};
+
 const initialDocuments: DocumentEntry[] = [
   {
     id: "doc-1",
@@ -40,7 +45,7 @@ const initialDocuments: DocumentEntry[] = [
 export default function DocumentsPageClient() {
   const defaultFolderId = "folder-general";
   const [documents, setDocuments] = useState(initialDocuments);
-  const [folders, setFolders] = useState([
+  const [folders, setFolders] = useState<Folder[]>([
     { id: defaultFolderId, name: "General" },
   ]);
   const [selectedFolderId, setSelectedFolderId] =
@@ -103,7 +108,7 @@ export default function DocumentsPageClient() {
           name: file.name,
           status: "Uploaded",
           updated: "Just now",
-          folderId: defaultFolderId,
+          folderId: selectedFolderId || defaultFolderId,
           content: "Unable to read file contents.",
           mimeType: file.type || "application/octet-stream",
           dataUrl: undefined,
@@ -245,7 +250,7 @@ export default function DocumentsPageClient() {
     console.info("Manage documents clicked");
   };
 
-  const documentsByFolder = folders.map((folder) => ({
+  const documentsBySystemFolder = folders.map((folder) => ({
     folder,
     documents: documents.filter((doc) => doc.folderId === folder.id),
   }));
@@ -387,7 +392,8 @@ export default function DocumentsPageClient() {
               </div>
             )}
             <div className="mt-3 space-y-2">
-              {documentsByFolder.map(({ folder, documents: folderDocuments }) => {
+              {documentsBySystemFolder.map(
+                ({ folder, documents: folderDocuments }) => {
                 const isOpen = openFolderIds.includes(folder.id);
                 return (
                   <div
